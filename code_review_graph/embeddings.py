@@ -118,12 +118,12 @@ class EmbeddingStore:
         model = _get_model()
 
         # Filter to nodes that need embedding
-        to_embed: list[tuple[GraphNode, str]] = []
+        to_embed: list[tuple[GraphNode, str, str]] = []
         for node in nodes:
             if node.kind == "File":
                 continue  # Skip file nodes, they don't have meaningful names
             text = _node_to_text(node)
-            text_hash = hashlib.md5(text.encode()).hexdigest()
+            text_hash = hashlib.sha256(text.encode()).hexdigest()
 
             existing = self._conn.execute(
                 "SELECT text_hash FROM embeddings WHERE qualified_name = ?",
@@ -131,18 +131,16 @@ class EmbeddingStore:
             ).fetchone()
             if existing and existing["text_hash"] == text_hash:
                 continue
-            to_embed.append((node, text))
+            to_embed.append((node, text, text_hash))
 
         if not to_embed:
             return 0
 
         # Batch encode
-        texts = [t for _, t in to_embed]
+        texts = [t for _, t, _ in to_embed]
         vectors = model.encode(texts, batch_size=batch_size, show_progress_bar=False)
 
-        import hashlib as _hl
-        for (node, text), vec in zip(to_embed, vectors):
-            text_hash = _hl.md5(text.encode()).hexdigest()
+        for (node, _text, text_hash), vec in zip(to_embed, vectors):
             blob = _encode_vector(vec.tolist())
             self._conn.execute(
                 """INSERT OR REPLACE INTO embeddings (qualified_name, vector, text_hash)
@@ -157,6 +155,7 @@ class EmbeddingStore:
         """Search for nodes by semantic similarity.
 
         Returns list of (qualified_name, similarity_score) sorted by score descending.
+        Uses chunked processing to limit peak memory usage on large graphs.
         """
         if not self.available:
             return []
@@ -164,13 +163,18 @@ class EmbeddingStore:
         model = _get_model()
         query_vec = model.encode([query], show_progress_bar=False)[0].tolist()
 
-        # Load all embeddings and compute similarity
-        rows = self._conn.execute("SELECT qualified_name, vector FROM embeddings").fetchall()
+        # Process in chunks to limit peak memory for large codebases
         scored: list[tuple[str, float]] = []
-        for row in rows:
-            vec = _decode_vector(row["vector"])
-            sim = _cosine_similarity(query_vec, vec)
-            scored.append((row["qualified_name"], sim))
+        cursor = self._conn.execute("SELECT qualified_name, vector FROM embeddings")
+        chunk_size = 500
+        while True:
+            rows = cursor.fetchmany(chunk_size)
+            if not rows:
+                break
+            for row in rows:
+                vec = _decode_vector(row["vector"])
+                sim = _cosine_similarity(query_vec, vec)
+                scored.append((row["qualified_name"], sim))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:limit]

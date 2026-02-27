@@ -20,6 +20,32 @@ jobs:
       - name: Lint with ruff
         run: ruff check code_review_graph/
 
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install -e ".[dev]" mypy types-networkx
+      - name: Run mypy
+        run: mypy code_review_graph/ --ignore-missing-imports --no-strict-optional
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install bandit
+        run: pip install bandit[toml]
+      - name: Run bandit security scan
+        run: bandit -r code_review_graph/ -c pyproject.toml || bandit -r code_review_graph/ -s B101,B404,B603
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -34,4 +60,4 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]" pytest-cov
       - name: Run tests with coverage
-        run: pytest --tb=short -q --cov=code_review_graph --cov-report=term-missing
+        run: pytest --tb=short -q --cov=code_review_graph --cov-report=term-missing --cov-fail-under=50

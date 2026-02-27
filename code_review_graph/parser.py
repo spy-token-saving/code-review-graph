@@ -84,6 +84,8 @@ _CLASS_TYPES: dict[str, list[str]] = {
     "go": ["type_declaration"],
     "rust": ["struct_item", "enum_item", "impl_item"],
     "java": ["class_declaration", "interface_declaration", "enum_declaration"],
+    "c": ["struct_specifier", "type_definition"],
+    "cpp": ["class_specifier", "struct_specifier"],
     "c_sharp": [
         "class_declaration", "interface_declaration",
         "enum_declaration", "struct_declaration",
@@ -102,6 +104,8 @@ _FUNCTION_TYPES: dict[str, list[str]] = {
     "go": ["function_declaration", "method_declaration"],
     "rust": ["function_item"],
     "java": ["method_declaration", "constructor_declaration"],
+    "c": ["function_definition"],
+    "cpp": ["function_definition"],
     "c_sharp": ["method_declaration", "constructor_declaration"],
     "ruby": ["method", "singleton_method"],
     "kotlin": ["function_declaration"],
@@ -117,6 +121,8 @@ _IMPORT_TYPES: dict[str, list[str]] = {
     "go": ["import_declaration"],
     "rust": ["use_declaration"],
     "java": ["import_declaration"],
+    "c": ["preproc_include"],
+    "cpp": ["preproc_include"],
     "c_sharp": ["using_directive"],
     "ruby": ["call"],  # require/require_relative
     "kotlin": ["import_header"],
@@ -132,6 +138,8 @@ _CALL_TYPES: dict[str, list[str]] = {
     "go": ["call_expression"],
     "rust": ["call_expression", "macro_invocation"],
     "java": ["method_invocation", "object_creation_expression"],
+    "c": ["call_expression"],
+    "cpp": ["call_expression"],
     "c_sharp": ["invocation_expression", "object_creation_expression"],
     "ruby": ["call", "method_call"],
     "kotlin": ["call_expression"],
@@ -381,9 +389,20 @@ class CodeParser:
 
     def _get_name(self, node, language: str, kind: str) -> Optional[str]:
         """Extract the name from a class/function definition node."""
+        # For C/C++: function names are inside function_declarator/pointer_declarator
+        # Check these first to avoid matching the return type_identifier
+        if language in ("c", "cpp") and kind == "function":
+            for child in node.children:
+                if child.type in ("function_declarator", "pointer_declarator"):
+                    result = self._get_name(child, language, kind)
+                    if result:
+                        return result
         # Most languages use a 'name' child
         for child in node.children:
-            if child.type in ("identifier", "name", "type_identifier", "property_identifier"):
+            if child.type in (
+                "identifier", "name", "type_identifier", "property_identifier",
+                "simple_identifier", "constant",
+            ):
                 return child.text.decode("utf-8", errors="replace")
         # For Go type declarations, look for type_spec
         if language == "go" and node.type == "type_declaration":
@@ -430,6 +449,13 @@ class CodeParser:
                 ):
                     text = child.text.decode("utf-8", errors="replace")
                     bases.append(text)
+        elif language == "cpp":
+            # C++: base_class_clause contains type_identifiers
+            for child in node.children:
+                if child.type == "base_class_clause":
+                    for sub in child.children:
+                        if sub.type == "type_identifier":
+                            bases.append(sub.text.decode("utf-8", errors="replace"))
         elif language in ("typescript", "javascript", "tsx"):
             # extends clause
             for child in node.children:
@@ -489,6 +515,12 @@ class CodeParser:
         elif language == "rust":
             # use crate::module::item
             imports.append(text.replace("use ", "").rstrip(";").strip())
+        elif language in ("c", "cpp"):
+            # #include <header> or #include "header"
+            for child in node.children:
+                if child.type in ("system_lib_string", "string_literal"):
+                    val = child.text.decode("utf-8", errors="replace").strip("<>\"")
+                    imports.append(val)
         elif language in ("java", "c_sharp"):
             # import/using package.Class
             parts = text.split()

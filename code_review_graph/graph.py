@@ -82,6 +82,7 @@ class GraphNode:
     params: Optional[str]
     return_type: Optional[str]
     is_test: bool
+    file_hash: Optional[str]
     extra: dict
 
 
@@ -123,10 +124,21 @@ class GraphStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._init_schema()
+        self._nxg_cache: nx.DiGraph | None = None
+
+    def __enter__(self) -> "GraphStore":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
 
     def _init_schema(self) -> None:
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate the cached NetworkX graph after write operations."""
+        self._nxg_cache = None
 
     def close(self) -> None:
         self._conn.close()
@@ -198,6 +210,7 @@ class GraphStore:
         """Remove all nodes and edges associated with a file."""
         self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
         self._conn.execute("DELETE FROM edges WHERE file_path = ?", (file_path,))
+        self._invalidate_cache()
 
     def store_file_nodes_edges(
         self, file_path: str, nodes: list[NodeInfo], edges: list[EdgeInfo], fhash: str = ""
@@ -209,6 +222,7 @@ class GraphStore:
         for edge in edges:
             self.upsert_edge(edge)
         self._conn.commit()
+        self._invalidate_cache()
 
     def set_metadata(self, key: str, value: str) -> None:
         self._conn.execute(
@@ -326,16 +340,11 @@ class GraphStore:
 
         impacted_files = list({n.file_path for n in impacted_nodes})
 
-        # Collect relevant edges
+        # Collect relevant edges in a single batch query
         relevant_edges = []
         all_qns = seeds | impacted
-        for qn in all_qns:
-            for e in self.get_edges_by_source(qn):
-                if e.target_qualified in all_qns:
-                    relevant_edges.append(e)
-            for e in self.get_edges_by_target(qn):
-                if e.source_qualified in all_qns:
-                    relevant_edges.append(e)
+        if all_qns:
+            relevant_edges = self.get_edges_among(all_qns)
 
         return {
             "changed_nodes": changed_nodes,
@@ -396,14 +405,41 @@ class GraphStore:
             last_updated=last_updated,
         )
 
+    # --- Public edge access (for visualization etc.) ---
+
+    def get_all_edges(self) -> list[GraphEdge]:
+        """Return all edges in the graph."""
+        rows = self._conn.execute("SELECT * FROM edges").fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
+    def get_edges_among(self, qualified_names: set[str]) -> list[GraphEdge]:
+        """Return edges where both source and target are in the given set.
+
+        Uses a single SQL query instead of per-node lookups.
+        """
+        if not qualified_names:
+            return []
+        # Use a temp table approach for large sets, direct IN clause for small
+        qns = list(qualified_names)
+        placeholders = ",".join("?" for _ in qns)
+        rows = self._conn.execute(
+            f"SELECT * FROM edges WHERE source_qualified IN ({placeholders})"
+            f" AND target_qualified IN ({placeholders})",
+            qns + qns,
+        ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
     # --- Internal helpers ---
 
     def _build_networkx_graph(self) -> nx.DiGraph:
-        """Build an in-memory NetworkX directed graph from all edges."""
+        """Build (or return cached) in-memory NetworkX directed graph from all edges."""
+        if self._nxg_cache is not None:
+            return self._nxg_cache
         g = nx.DiGraph()
         rows = self._conn.execute("SELECT * FROM edges").fetchall()
         for r in rows:
             g.add_edge(r["source_qualified"], r["target_qualified"], kind=r["kind"])
+        self._nxg_cache = g
         return g
 
     def _make_qualified(self, node: NodeInfo) -> str:
@@ -427,6 +463,7 @@ class GraphStore:
             params=row["params"],
             return_type=row["return_type"],
             is_test=bool(row["is_test"]),
+            file_hash=row["file_hash"],
             extra=json.loads(row["extra"]) if row["extra"] else {},
         )
 

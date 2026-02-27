@@ -99,8 +99,7 @@ def export_graph_data(store: GraphStore) -> dict:
 
     name_index = _build_name_index(nodes, seen_qn)
 
-    rows = store._conn.execute("SELECT * FROM edges").fetchall()  # noqa: SLF001
-    all_edges = [edge_to_dict(store._row_to_edge(r)) for r in rows]  # noqa: SLF001
+    all_edges = [edge_to_dict(e) for e in store.get_all_edges()]
 
     # Resolve short/unqualified edge targets to full qualified names,
     # then drop edges that still can't be resolved (external/stdlib calls).
@@ -138,6 +137,10 @@ def generate_html(store: GraphStore, output_path: str | Path) -> Path:
 # ---------------------------------------------------------------------------
 # Full D3.js interactive HTML template
 # ---------------------------------------------------------------------------
+
+# Template lives in this file for zero-dependency packaging (no external files
+# to locate at runtime).  The ``# noqa: E501`` on the module is set via
+# pyproject.toml per-file-ignores for this reason.
 
 _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
@@ -240,7 +243,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 </head>
 <body>
 
-<div id="legend">
+<div id="legend" role="complementary" aria-label="Graph legend">
   <h3>Nodes</h3>
   <div class="legend-section">
     <div class="legend-item"><span class="legend-circle" style="background:#58a6ff"></span> File</div>
@@ -259,14 +262,14 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <div id="controls">
-  <input id="search" type="text" placeholder="Search nodes\u2026" autocomplete="off" spellcheck="false">
-  <button id="btn-fit" title="Fit to screen">Fit</button>
-  <button id="btn-labels" title="Toggle labels" class="active">Labels</button>
+  <input id="search" type="text" placeholder="Search nodes\u2026" autocomplete="off" spellcheck="false" aria-label="Search graph nodes by name">
+  <button id="btn-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
+  <button id="btn-labels" title="Toggle labels" class="active" aria-label="Toggle node labels" aria-pressed="true">Labels</button>
 </div>
 
-<div id="stats-bar"></div>
+<div id="stats-bar" role="status" aria-label="Graph statistics"></div>
 <div id="tooltip"></div>
-<svg></svg>
+<svg role="img" aria-label="Interactive code knowledge graph visualization. Use search to find nodes, click files to expand."></svg>
 
 <script>
 const graphData = __GRAPH_DATA__;
@@ -590,6 +593,7 @@ document.getElementById("btn-fit").addEventListener("click", fitGraph);
 document.getElementById("btn-labels").addEventListener("click", function() {
   showLabels = !showLabels;
   this.classList.toggle("active");
+  this.setAttribute("aria-pressed", showLabels);
   updateLabelVisibility();
 });
 

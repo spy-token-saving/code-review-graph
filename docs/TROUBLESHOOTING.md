@@ -24,7 +24,7 @@ The graph uses SQLite with WAL mode. If you see lock errors:
 ## Graph seems stale
 - Hooks auto-update on edit/commit
 - If stale, run `/code-review-graph:build-graph` manually
-- Check that hooks are configured in `.claude/settings.json`
+- Check that hooks are configured in `hooks/hooks.json` (see [hooks documentation](../hooks/hooks.json))
 
 ## Embeddings not working
 - Install with: `pip install code-review-graph[embeddings]`

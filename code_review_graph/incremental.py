@@ -122,6 +122,9 @@ def _is_binary(path: Path) -> bool:
         return True
 
 
+_GIT_TIMEOUT = 30  # seconds
+
+
 def get_changed_files(repo_root: Path, base: str = "HEAD~1") -> list[str]:
     """Get list of changed files via git diff."""
     try:
@@ -130,6 +133,7 @@ def get_changed_files(repo_root: Path, base: str = "HEAD~1") -> list[str]:
             capture_output=True,
             text=True,
             cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT,
         )
         if result.returncode != 0:
             # Fallback: try diff against empty tree (initial commit)
@@ -138,10 +142,11 @@ def get_changed_files(repo_root: Path, base: str = "HEAD~1") -> list[str]:
                 capture_output=True,
                 text=True,
                 cwd=str(repo_root),
+                timeout=_GIT_TIMEOUT,
             )
         files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
         return files
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
 
@@ -153,13 +158,18 @@ def get_staged_and_unstaged(repo_root: Path) -> list[str]:
             capture_output=True,
             text=True,
             cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT,
         )
         files = []
         for line in result.stdout.splitlines():
             if len(line) > 3:
-                files.append(line[3:].strip())
+                entry = line[3:].strip()
+                # Handle renamed files: "R  old -> new"
+                if " -> " in entry:
+                    entry = entry.split(" -> ", 1)[1]
+                files.append(entry)
         return files
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
 
@@ -171,9 +181,10 @@ def get_all_tracked_files(repo_root: Path) -> list[str]:
             capture_output=True,
             text=True,
             cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT,
         )
         return [f.strip() for f in result.stdout.splitlines() if f.strip()]
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
 
@@ -237,14 +248,14 @@ def find_dependents(store: GraphStore, file_path: str) -> list[str]:
 def full_build(repo_root: Path, store: GraphStore) -> dict:
     """Full rebuild of the entire graph."""
     parser = CodeParser()
-    _load_ignore_patterns(repo_root)
     files = collect_all_files(repo_root)
 
     total_nodes = 0
     total_edges = 0
     errors = []
+    file_count = len(files)
 
-    for rel_path in files:
+    for i, rel_path in enumerate(files, 1):
         full_path = repo_root / rel_path
         try:
             fhash = file_hash(full_path)
@@ -252,8 +263,13 @@ def full_build(repo_root: Path, store: GraphStore) -> dict:
             store.store_file_nodes_edges(str(full_path), nodes, edges, fhash)
             total_nodes += len(nodes)
             total_edges += len(edges)
-        except Exception as e:
+        except (OSError, PermissionError) as e:
             errors.append({"file": rel_path, "error": str(e)})
+        except Exception as e:
+            logger.warning("Error parsing %s: %s", rel_path, e)
+            errors.append({"file": rel_path, "error": str(e)})
+        if i % 50 == 0 or i == file_count:
+            logger.info("Progress: %d/%d files parsed", i, file_count)
 
     store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
     store.set_metadata("last_build_type", "full")
@@ -322,9 +338,9 @@ def incremental_update(
 
         try:
             fhash = file_hash(full_path)
-            # Check if file actually changed
+            # Check if file actually changed (compare against stored file_hash column)
             existing_nodes = store.get_nodes_by_file(str(full_path))
-            if existing_nodes and existing_nodes[0].extra.get("file_hash") == fhash:
+            if existing_nodes and existing_nodes[0].file_hash == fhash:
                 # Skip unchanged files (hash match)
                 continue
 
@@ -332,7 +348,10 @@ def incremental_update(
             store.store_file_nodes_edges(str(full_path), nodes, edges, fhash)
             total_nodes += len(nodes)
             total_edges += len(edges)
+        except (OSError, PermissionError) as e:
+            errors.append({"file": rel_path, "error": str(e)})
         except Exception as e:
+            logger.warning("Error parsing %s: %s", rel_path, e)
             errors.append({"file": rel_path, "error": str(e)})
 
     store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -402,9 +421,15 @@ def watch(repo_root: Path, store: GraphStore) -> None:
         def on_deleted(self, event):
             if event.is_directory:
                 return
+            # Only handle files we would normally track
+            try:
+                rel = str(Path(event.src_path).relative_to(repo_root))
+            except ValueError:
+                return
+            if _should_ignore(rel, ignore_patterns):
+                return
             store.remove_file_data(event.src_path)
             store.commit()
-            rel = str(Path(event.src_path).relative_to(repo_root))
             logger.info("Removed: %s", rel)
 
         def _schedule(self, abs_path: str):
@@ -466,55 +491,3 @@ def watch(repo_root: Path, store: GraphStore) -> None:
     logger.info("Watch stopped.")
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point for hooks
-# ---------------------------------------------------------------------------
-
-
-def main() -> None:
-    """CLI entry point: python -m server.incremental update [--full] [--base BASE] [--watch]"""
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Code Review Graph - incremental updater")
-    ap.add_argument(
-        "action", choices=["update", "build", "status", "watch"],
-        help="Action to perform",
-    )
-    ap.add_argument("--full", action="store_true", help="Force full rebuild")
-    ap.add_argument("--base", default="HEAD~1", help="Git diff base (default: HEAD~1)")
-    ap.add_argument("--repo", default=None, help="Repository root (auto-detected)")
-    args = ap.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
-    repo_root = Path(args.repo) if args.repo else find_project_root()
-
-    db_path = get_db_path(repo_root)
-    store = GraphStore(db_path)
-
-    try:
-        if args.action == "status":
-            stats = store.get_stats()
-            print(f"Nodes: {stats.total_nodes}")
-            print(f"Edges: {stats.total_edges}")
-            print(f"Files: {stats.files_count}")
-            print(f"Languages: {', '.join(stats.languages)}")
-            print(f"Last updated: {stats.last_updated or 'never'}")
-        elif args.action == "build" or args.full:
-            result = full_build(repo_root, store)
-            print(f"Full build: {result['files_parsed']} files, "
-                  f"{result['total_nodes']} nodes, {result['total_edges']} edges")
-            if result["errors"]:
-                print(f"Errors: {len(result['errors'])}")
-        elif args.action == "watch":
-            watch(repo_root, store)
-        else:
-            result = incremental_update(repo_root, store, base=args.base)
-            print(f"Incremental: {result['files_updated']} files updated, "
-                  f"{result['total_nodes']} nodes, {result['total_edges']} edges")
-    finally:
-        store.close()
-
-
-if __name__ == "__main__":
-    main()

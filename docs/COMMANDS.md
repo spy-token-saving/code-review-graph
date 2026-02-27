@@ -105,3 +105,73 @@ code-review-graph visualize
 # Start MCP server
 code-review-graph serve
 ```
+
+## API Response Schemas
+
+### `build_or_update_graph_tool`
+```json
+{
+  "files_parsed": 150,       // (full build) or "files_updated": 12 (incremental)
+  "total_nodes": 420,
+  "total_edges": 380,
+  "changed_files": ["src/auth.py"],      // incremental only
+  "dependent_files": ["src/routes.py"],   // incremental only
+  "errors": [{"file": "bad.py", "error": "SyntaxError"}]
+}
+```
+
+### `get_impact_radius_tool`
+```json
+{
+  "changed_nodes": [
+    {"id": 1, "kind": "Function", "name": "login", "qualified_name": "src/auth.py::login", "file_path": "src/auth.py", "line_start": 10, "line_end": 25, "language": "python", "is_test": false}
+  ],
+  "impacted_nodes": [ /* same shape */ ],
+  "impacted_files": ["src/routes.py", "src/middleware.py"],
+  "edges": [
+    {"id": 5, "kind": "CALLS", "source": "src/auth.py::login", "target": "src/db.py::get_user", "file_path": "src/auth.py", "line": 15}
+  ]
+}
+```
+
+### `query_graph_tool`
+```json
+{
+  "results": [
+    {"id": 1, "kind": "Function", "name": "login", "qualified_name": "...", "file_path": "...", "line_start": 10, "line_end": 25}
+  ]
+}
+```
+
+### `get_review_context_tool`
+```json
+{
+  "impact": { /* same as get_impact_radius_tool */ },
+  "source_snippets": {
+    "src/auth.py": "def login(...):\n    ..."
+  },
+  "review_guidance": "Focus on: login() changed parameters, check callers in routes.py"
+}
+```
+
+### `semantic_search_nodes_tool`
+```json
+{
+  "results": [
+    {"id": 1, "kind": "Function", "name": "authenticate", "qualified_name": "...", "file_path": "...", "similarity_score": 0.8732}
+  ]
+}
+```
+
+### `list_graph_stats_tool`
+```json
+{
+  "total_nodes": 420,
+  "total_edges": 380,
+  "nodes_by_kind": {"File": 50, "Function": 280, "Class": 60, "Type": 15, "Test": 15},
+  "edges_by_kind": {"CALLS": 200, "CONTAINS": 100, "IMPORTS_FROM": 50, "INHERITS": 20, "TESTED_BY": 10},
+  "languages": ["python", "typescript", "go"],
+  "files_count": 50,
+  "last_updated": "2026-02-27T14:30:00"
+}
+```

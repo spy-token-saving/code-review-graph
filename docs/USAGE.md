@@ -74,3 +74,25 @@ Python, TypeScript, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/
 - **Edges**: CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON
 
 See [schema.md](schema.md) for full details.
+
+## Ignore Patterns
+
+By default, these paths are excluded from indexing:
+
+```
+.code-review-graph/**    node_modules/**    .git/**
+__pycache__/**           *.pyc              .venv/**
+venv/**                  dist/**            build/**
+.next/**                 target/**          *.min.js
+*.min.css                *.map              *.lock
+package-lock.json        yarn.lock          *.db
+*.sqlite                 *.db-journal
+```
+
+To add custom patterns, create a `.code-review-graphignore` file in your repo root (same syntax as `.gitignore`):
+
+```
+generated/**
+vendor/**
+*.generated.ts
+```
