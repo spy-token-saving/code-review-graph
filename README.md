@@ -22,6 +22,13 @@ Stop re-scanning your entire codebase on every review. `code-review-graph` build
 | Token-heavy (entire codebase) | **5-10x fewer tokens** per review |
 | Manual "what else does this affect?" | Graph-powered dependency tracing |
 
+### See It in Action
+
+| Interactive Graph Visualization | Blast-Radius Review |
+|:---:|:---:|
+| ![Graph Visualization](docs/assets/graph-visualization.png) | ![Review Delta](docs/assets/review-delta.png) |
+| *Collapsible, searchable D3.js graph with edge-type toggles* | *Impact analysis showing changed + affected nodes* |
+
 ---
 
 ## ✨ Features
@@ -41,22 +48,27 @@ For the full feature list and changelog, see [docs/FEATURES.md](docs/FEATURES.md
 
 ## 🚀 Quick Start
 
-### Installation
+### Install as a Claude Code Plugin (Recommended)
+
+```bash
+claude plugin add tirth8205/code-review-graph
+```
+
+That's it. Claude Code will handle installation and MCP server setup automatically. Restart Claude Code to activate.
+
+### Install via pip
+
+If you prefer a manual setup or want to use the CLI tools directly:
 
 ```bash
 pip install code-review-graph
+code-review-graph init    # Set up .mcp.json for Claude Code
 ```
 
 Works on Python 3.10+. With semantic search (optional):
 
 ```bash
 pip install code-review-graph[embeddings]
-```
-
-**Don't have Python 3.10+?** Use Docker instead:
-
-```bash
-docker run -v $(pwd):/repo tirth8205/code-review-graph build
 ```
 
 ### CLI
@@ -70,16 +82,6 @@ code-review-graph status     # Show graph statistics
 code-review-graph visualize  # Interactive HTML graph visualization
 code-review-graph serve      # Start MCP server
 ```
-
-No git clone. No manual venv. No Python upgrade needed.
-
-### Connect to Claude Code
-
-```bash
-code-review-graph init
-```
-
-This creates `.mcp.json` with the correct Python path. Restart Claude Code to pick up the new MCP server.
 
 ### Use the skills
 
