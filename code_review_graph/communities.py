@@ -11,7 +11,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Any
 
-from .graph import GraphEdge, GraphNode, GraphStore
+from .graph import GraphEdge, GraphNode, GraphStore, _sanitize_name
 
 logger = logging.getLogger(__name__)
 
@@ -418,10 +418,19 @@ def detect_communities(
 
     if IGRAPH_AVAILABLE:
         logger.info("Detecting communities with Leiden algorithm (igraph)")
-        return _detect_leiden(unique_nodes, all_edges, min_size)
+        results = _detect_leiden(unique_nodes, all_edges, min_size)
     else:
         logger.info("igraph not available, using file-based community detection")
-        return _detect_file_based(unique_nodes, all_edges, min_size)
+        results = _detect_file_based(unique_nodes, all_edges, min_size)
+
+    # Convert member_qns (internal set) to a list for serialization safety,
+    # then strip it from the returned dicts to avoid leaking internal state.
+    for comm in results:
+        if "member_qns" in comm:
+            comm["member_qns"] = list(comm["member_qns"])
+            del comm["member_qns"]
+
+    return results
 
 
 def store_communities(
@@ -506,16 +515,16 @@ def get_communities(
             "SELECT qualified_name FROM nodes WHERE community_id = ?",
             (row["id"],),
         ).fetchall()
-        member_qns = [r["qualified_name"] for r in member_rows]
+        member_qns = [_sanitize_name(r["qualified_name"]) for r in member_rows]
 
         communities.append({
             "id": row["id"],
-            "name": row["name"],
+            "name": _sanitize_name(row["name"]),
             "level": row["level"],
             "cohesion": row["cohesion"],
             "size": row["size"],
             "dominant_language": row["dominant_language"] or "",
-            "description": row["description"] or "",
+            "description": _sanitize_name(row["description"] or ""),
             "members": member_qns,
         })
 
@@ -562,8 +571,8 @@ def get_architecture_overview(store: GraphStore) -> dict[str, Any]:
                 "source_community": src_comm,
                 "target_community": tgt_comm,
                 "edge_kind": e.kind,
-                "source": e.source_qualified,
-                "target": e.target_qualified,
+                "source": _sanitize_name(e.source_qualified),
+                "target": _sanitize_name(e.target_qualified),
             })
 
     # Generate warnings for high coupling
