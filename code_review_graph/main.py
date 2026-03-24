@@ -10,6 +10,13 @@ from typing import Optional
 
 from fastmcp import FastMCP
 
+from .prompts import (
+    architecture_map_prompt,
+    debug_issue_prompt,
+    onboard_developer_prompt,
+    pre_merge_check_prompt,
+    review_changes_prompt,
+)
 from .tools import (
     apply_refactor_func,
     build_or_update_graph,
@@ -469,6 +476,60 @@ def apply_refactor_tool(
     return apply_refactor_func(
         refactor_id=refactor_id, repo_root=repo_root,
     )
+
+
+@mcp.prompt()
+def review_changes(base: str = "HEAD~1") -> list[dict]:
+    """Pre-commit review workflow using detect_changes, affected_flows, and test gaps.
+
+    Produces a structured code review with risk levels and actionable findings.
+
+    Args:
+        base: Git ref to diff against. Default: HEAD~1.
+    """
+    return review_changes_prompt(base=base)
+
+
+@mcp.prompt()
+def architecture_map() -> list[dict]:
+    """Architecture documentation using communities, flows, and Mermaid diagrams.
+
+    Generates a comprehensive architecture map with module summaries and coupling warnings.
+    """
+    return architecture_map_prompt()
+
+
+@mcp.prompt()
+def debug_issue(description: str = "") -> list[dict]:
+    """Guided debugging using search, flow tracing, and recent changes.
+
+    Systematic debugging workflow that traces execution paths and identifies root causes.
+
+    Args:
+        description: Description of the issue to debug.
+    """
+    return debug_issue_prompt(description=description)
+
+
+@mcp.prompt()
+def onboard_developer() -> list[dict]:
+    """New developer orientation using stats, architecture, and critical flows.
+
+    Creates an onboarding guide covering codebase structure, key modules, and patterns.
+    """
+    return onboard_developer_prompt()
+
+
+@mcp.prompt()
+def pre_merge_check(base: str = "HEAD~1") -> list[dict]:
+    """PR readiness check with risk scoring, test gaps, and dead code detection.
+
+    Produces a merge readiness report with risk assessment and recommendations.
+
+    Args:
+        base: Git ref to diff against. Default: HEAD~1.
+    """
+    return pre_merge_check_prompt(base=base)
 
 
 def main(repo_root: str | None = None) -> None:
