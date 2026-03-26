@@ -79,6 +79,8 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".vue": "vue",
     ".dart": "dart",
     ".r": "r",  # .lower() in detect_language handles .R → .r
+    ".mjs": "javascript",
+    ".astro": "typescript",
 }
 
 # Tree-sitter node type mappings per language
