@@ -344,6 +344,30 @@ class TestCodeParser:
         assert create_dog is not None
         assert create_dog.parent_name is None
 
+    # --- tsconfig alias resolution ---
+
+    def test_tsconfig_alias_resolution(self):
+        """Alias imports should resolve to absolute file paths."""
+        nodes, edges = self.parser.parse_file(FIXTURES / "alias_importer.ts")
+        imports = [e for e in edges if e.kind == "IMPORTS_FROM"]
+        resolved_imports = [e for e in imports if e.target.endswith("utils.ts")]
+        assert len(resolved_imports) >= 1, (
+            f"Expected resolved alias import, got targets: {[e.target for e in imports]}"
+        )
+
+    def test_tsconfig_missing_gracefully_handled(self):
+        """Files without a tsconfig should still parse without errors."""
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = os.path.join(tmp_dir, "no_tsconfig_file.ts")
+            with open(tmp_path, "w") as f:
+                f.write('import { foo } from "@/bar";\nexport const x = 1;\n')
+            nodes, edges = self.parser.parse_file(Path(tmp_path))
+            imports = [e for e in edges if e.kind == "IMPORTS_FROM"]
+            assert any("@/bar" in e.target for e in imports)
+
     # --- Vitest/Jest test detection ---
 
     def test_vitest_test_detection(self):
