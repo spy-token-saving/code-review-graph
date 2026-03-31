@@ -299,10 +299,13 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   #detail-panel h2 { font-size: 16px; color: #e6edf3; margin-bottom: 4px; word-break: break-all; }
   #detail-panel .dp-close {
     position: absolute; top: 12px; right: 14px;
-    cursor: pointer; color: #b0b8c4; font-size: 18px; line-height: 1;
-    border: none; background: none;
+    cursor: pointer; color: #8b949e; font-size: 14px; line-height: 1;
+    border: 1px solid #30363d; background: rgba(22,27,34,0.95);
+    border-radius: 6px; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
   }
-  #detail-panel .dp-close:hover { color: #e6edf3; }
+  #detail-panel .dp-close:hover { color: #e6edf3; border-color: #8b949e; background: #30363d; }
   .dp-section { margin-top: 14px; }
   .dp-section h4 { color: #9eaab6; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
   .dp-list { list-style: none; }
