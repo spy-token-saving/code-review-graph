@@ -2,7 +2,8 @@
 
 Generates Claude Code agent skill files, hooks configuration, and
 CLAUDE.md integration for seamless code-review-graph usage.
-Also supports multi-platform MCP server installation.
+Also supports multi-platform MCP server installation and
+Cursor hooks / OpenCode plugin generation.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import json
 import logging
 import platform
 import shutil
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 # --- Multi-platform MCP install ---
+
 
 def _zed_settings_path() -> Path:
     """Return the Zed settings.json path for the current OS."""
@@ -121,9 +124,7 @@ def install_platform_configs(
         List of platform names that were configured.
     """
     if target == "all":
-        platforms_to_install = {
-            k: v for k, v in PLATFORMS.items() if v["detect"]()
-        }
+        platforms_to_install = {k: v for k, v in PLATFORMS.items() if v["detect"]()}
     else:
         if target not in PLATFORMS:
             logger.error("Unknown platform: %s", target)
@@ -151,10 +152,7 @@ def install_platform_configs(
             if not isinstance(arr, list):
                 arr = []
             # Check if already present
-            if any(
-                isinstance(s, dict) and s.get("name") == "code-review-graph"
-                for s in arr
-            ):
+            if any(isinstance(s, dict) and s.get("name") == "code-review-graph" for s in arr):
                 print(f"  {plat['name']}: already configured in {config_path}")
                 configured.append(plat["name"])
                 continue
@@ -183,6 +181,7 @@ def install_platform_configs(
 
     return configured
 
+
 # --- Skill file contents ---
 
 _SKILLS: dict[str, dict[str, str]] = {
@@ -206,10 +205,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "- Use `children_of` on a file to see all its functions and classes.\n"
             "- Use `find_large_functions` to identify complex code.\n\n"
             "## Token Efficiency Rules\n"
-            "- ALWAYS start with `get_minimal_context(task=\"<your task>\")` "
+            '- ALWAYS start with `get_minimal_context(task="<your task>")` '
             "before any other graph tool.\n"
-            "- Use `detail_level=\"minimal\"` on all calls. Only escalate to "
-            "\"standard\" when minimal is insufficient.\n"
+            '- Use `detail_level="minimal"` on all calls. Only escalate to '
+            '"standard" when minimal is insufficient.\n'
             "- Target: complete any review/debug/refactor task in ≤5 tool calls "
             "and ≤800 total output tokens."
         ),
@@ -224,7 +223,7 @@ _SKILLS: dict[str, dict[str, str]] = {
             "1. Run `detect_changes` to get risk-scored change analysis.\n"
             "2. Run `get_affected_flows` to find impacted execution paths.\n"
             "3. For each high-risk function, run `query_graph` with "
-            "pattern=\"tests_for\" to check test coverage.\n"
+            'pattern="tests_for" to check test coverage.\n'
             "4. Run `get_impact_radius` to understand the blast radius.\n"
             "5. For any untested changes, suggest specific test cases.\n\n"
             "### Output Format\n\n"
@@ -234,10 +233,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "- Suggested improvements\n"
             "- Overall merge recommendation\n\n"
             "## Token Efficiency Rules\n"
-            "- ALWAYS start with `get_minimal_context(task=\"<your task>\")` "
+            '- ALWAYS start with `get_minimal_context(task="<your task>")` '
             "before any other graph tool.\n"
-            "- Use `detail_level=\"minimal\"` on all calls. Only escalate to "
-            "\"standard\" when minimal is insufficient.\n"
+            '- Use `detail_level="minimal"` on all calls. Only escalate to '
+            '"standard" when minimal is insufficient.\n'
             "- Target: complete any review/debug/refactor task in ≤5 tool calls "
             "and ≤800 total output tokens."
         ),
@@ -260,10 +259,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "- Look at affected flows to find the entry point that triggers the bug.\n"
             "- Recent changes are the most common source of new issues.\n\n"
             "## Token Efficiency Rules\n"
-            "- ALWAYS start with `get_minimal_context(task=\"<your task>\")` "
+            '- ALWAYS start with `get_minimal_context(task="<your task>")` '
             "before any other graph tool.\n"
-            "- Use `detail_level=\"minimal\"` on all calls. Only escalate to "
-            "\"standard\" when minimal is insufficient.\n"
+            '- Use `detail_level="minimal"` on all calls. Only escalate to '
+            '"standard" when minimal is insufficient.\n'
             "- Target: complete any review/debug/refactor task in ≤5 tool calls "
             "and ≤800 total output tokens."
         ),
@@ -275,10 +274,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "## Refactor Safely\n\n"
             "Use the knowledge graph to plan and execute refactoring with confidence.\n\n"
             "### Steps\n\n"
-            "1. Use `refactor_tool` with mode=\"suggest\" for community-driven "
+            '1. Use `refactor_tool` with mode="suggest" for community-driven '
             "refactoring suggestions.\n"
-            "2. Use `refactor_tool` with mode=\"dead_code\" to find unreferenced code.\n"
-            "3. For renames, use `refactor_tool` with mode=\"rename\" to preview all "
+            '2. Use `refactor_tool` with mode="dead_code" to find unreferenced code.\n'
+            '3. For renames, use `refactor_tool` with mode="rename" to preview all '
             "affected locations.\n"
             "4. Use `apply_refactor_tool` with the refactor_id to apply renames.\n"
             "5. After changes, run `detect_changes` to verify the refactoring impact.\n\n"
@@ -288,10 +287,10 @@ _SKILLS: dict[str, dict[str, str]] = {
             "- Use `get_affected_flows` to ensure no critical paths are broken.\n"
             "- Run `find_large_functions` to identify decomposition targets.\n\n"
             "## Token Efficiency Rules\n"
-            "- ALWAYS start with `get_minimal_context(task=\"<your task>\")` "
+            '- ALWAYS start with `get_minimal_context(task="<your task>")` '
             "before any other graph tool.\n"
-            "- Use `detail_level=\"minimal\"` on all calls. Only escalate to "
-            "\"standard\" when minimal is insufficient.\n"
+            '- Use `detail_level="minimal"` on all calls. Only escalate to '
+            '"standard" when minimal is insufficient.\n'
             "- Target: complete any review/debug/refactor task in ≤5 tool calls "
             "and ≤800 total output tokens."
         ),
@@ -461,14 +460,16 @@ def _inject_instructions(file_path: Path, marker: str, section: str) -> bool:
 def inject_claude_md(repo_root: Path) -> None:
     """Append MCP tools section to CLAUDE.md."""
     _inject_instructions(
-        repo_root / "CLAUDE.md", _CLAUDE_MD_SECTION_MARKER, _CLAUDE_MD_SECTION,
+        repo_root / "CLAUDE.md",
+        _CLAUDE_MD_SECTION_MARKER,
+        _CLAUDE_MD_SECTION,
     )
 
 
 # Cross-platform instruction files so every AI coding tool uses the graph.
 _PLATFORM_INSTRUCTION_FILES = {
-    "AGENTS.md": "AGENTS.md",       # Cursor, OpenCode, Antigravity
-    "GEMINI.md": "GEMINI.md",       # Antigravity / Gemini CLI
+    "AGENTS.md": "AGENTS.md",  # Cursor, OpenCode, Antigravity
+    "GEMINI.md": "GEMINI.md",  # Antigravity / Gemini CLI
     ".cursorrules": ".cursorrules",  # Cursor (legacy, widely used)
     ".windsurfrules": ".windsurfrules",  # Windsurf
 }
@@ -489,3 +490,195 @@ def inject_platform_instructions(repo_root: Path) -> list[str]:
         if _inject_instructions(path, _CLAUDE_MD_SECTION_MARKER, _CLAUDE_MD_SECTION):
             updated.append(label)
     return updated
+
+
+# --- Cursor hooks ---
+
+
+def generate_cursor_hooks_config() -> dict[str, Any]:
+    """Generate Cursor hooks.json configuration.
+
+    Returns a dict conforming to the Cursor hooks schema (version 1) with
+    hooks for afterFileEdit, sessionStart, and beforeShellExecution.
+    Each hook points to a shell script in ~/.cursor/hooks/.
+
+    Returns:
+        Dict suitable for writing as ~/.cursor/hooks.json.
+    """
+    hooks_dir = str(Path.home() / ".cursor" / "hooks")
+    return {
+        "version": 1,
+        "hooks": {
+            "afterFileEdit": [
+                {
+                    "command": f"{hooks_dir}/crg-update.sh",
+                    "timeout": 5,
+                },
+            ],
+            "sessionStart": [
+                {
+                    "command": f"{hooks_dir}/crg-session-start.sh",
+                    "timeout": 5,
+                },
+            ],
+            "beforeShellExecution": [
+                {
+                    "matcher": "^git\\s+commit",
+                    "command": f"{hooks_dir}/crg-pre-commit.sh",
+                    "timeout": 10,
+                },
+            ],
+        },
+    }
+
+
+def _cursor_hook_scripts() -> dict[str, str]:
+    """Return a mapping of filename -> shell script content for Cursor hooks.
+
+    Three scripts are generated:
+    - crg-update.sh: runs ``code-review-graph update --skip-flows`` after file edits
+    - crg-session-start.sh: runs ``code-review-graph status`` on session start
+    - crg-pre-commit.sh: runs ``code-review-graph detect-changes --brief`` before
+      git commit commands
+
+    All scripts:
+    - Read stdin (Cursor passes JSON context) and discard it
+    - Fail gracefully (exit 0) so they never block the editor
+    - Emit valid JSON on stdout per the Cursor hooks protocol
+    """
+    update_script = """\
+#!/usr/bin/env bash
+# code-review-graph: auto-update graph after file edits (Cursor hook)
+# Fails gracefully — never blocks the editor.
+set -euo pipefail
+
+# Consume stdin (Cursor sends JSON context)
+cat > /dev/null
+
+# Run update; swallow errors so the hook always succeeds.
+output=$(code-review-graph update --skip-flows 2>&1) || true
+
+# Emit valid JSON on stdout per Cursor hooks protocol.
+python3 -c "
+import json, sys
+print(json.dumps({'message': 'graph updated', 'passed': True}))
+" 2>/dev/null || echo '{"passed":true}'
+
+exit 0
+"""
+
+    session_start_script = """\
+#!/usr/bin/env bash
+# code-review-graph: show graph status on session start (Cursor hook)
+# Fails gracefully — never blocks the editor.
+set -euo pipefail
+
+# Consume stdin
+cat > /dev/null
+
+# Capture status output
+output=$(code-review-graph status 2>&1) || output="graph not built yet"
+
+# Emit valid JSON on stdout
+python3 -c "
+import json, sys
+msg = sys.stdin.read()
+print(json.dumps({'message': msg, 'passed': True}))
+" <<< "$output" 2>/dev/null || echo '{"passed":true}'
+
+exit 0
+"""
+
+    pre_commit_script = """\
+#!/usr/bin/env bash
+# code-review-graph: detect changes before git commit (Cursor hook)
+# Fails gracefully — never blocks the editor.
+set -euo pipefail
+
+# Consume stdin
+cat > /dev/null
+
+# Run detect-changes; swallow errors
+output=$(code-review-graph detect-changes --brief 2>&1) || output=""
+
+# Emit valid JSON on stdout
+python3 -c "
+import json, sys
+msg = sys.stdin.read()
+print(json.dumps({'message': msg, 'passed': True}))
+" <<< "$output" 2>/dev/null || echo '{"passed":true}'
+
+exit 0
+"""
+
+    return {
+        "crg-update.sh": update_script,
+        "crg-session-start.sh": session_start_script,
+        "crg-pre-commit.sh": pre_commit_script,
+    }
+
+
+def install_cursor_hooks() -> Path:
+    """Install Cursor hooks configuration and scripts at user level.
+
+    Writes ``~/.cursor/hooks.json`` (merging code-review-graph hooks
+    into any existing configuration) and creates executable shell scripts
+    in ``~/.cursor/hooks/``.
+
+    Returns:
+        Path to the hooks.json file that was written.
+    """
+    cursor_dir = Path.home() / ".cursor"
+    hooks_json_path = cursor_dir / "hooks.json"
+    hooks_script_dir = cursor_dir / "hooks"
+
+    # --- Merge hooks.json ---
+    existing: dict[str, Any] = {}
+    if hooks_json_path.exists():
+        try:
+            existing = json.loads(hooks_json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read existing %s: %s", hooks_json_path, exc)
+
+    new_config = generate_cursor_hooks_config()
+
+    # Preserve version (use ours if absent)
+    existing.setdefault("version", new_config["version"])
+
+    # Merge hook arrays per event type
+    existing_hooks = existing.get("hooks", {})
+    if not isinstance(existing_hooks, dict):
+        existing_hooks = {}
+
+    for event, entries in new_config["hooks"].items():
+        event_hooks = existing_hooks.get(event, [])
+        if not isinstance(event_hooks, list):
+            event_hooks = []
+        # De-duplicate: skip if a hook with the same command already exists
+        existing_commands = {h.get("command", "") for h in event_hooks if isinstance(h, dict)}
+        for entry in entries:
+            if entry["command"] not in existing_commands:
+                event_hooks.append(entry)
+        existing_hooks[event] = event_hooks
+
+    existing["hooks"] = existing_hooks
+
+    cursor_dir.mkdir(parents=True, exist_ok=True)
+    hooks_json_path.write_text(
+        json.dumps(existing, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("Wrote Cursor hooks config: %s", hooks_json_path)
+
+    # --- Write hook scripts ---
+    hooks_script_dir.mkdir(parents=True, exist_ok=True)
+    scripts = _cursor_hook_scripts()
+
+    for filename, content in scripts.items():
+        script_path = hooks_script_dir / filename
+        script_path.write_text(content, encoding="utf-8")
+        # Make executable (owner rwx, group rx, other rx)
+        script_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+        logger.info("Wrote Cursor hook script: %s", script_path)
+
+    return hooks_json_path
