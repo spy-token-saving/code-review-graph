@@ -92,6 +92,14 @@ PLATFORMS: dict[str, dict[str, Any]] = {
         "format": "object",
         "needs_type": False,
     },
+    "qwen": {
+        "name": "Qwen Code",
+        "config_path": lambda root: Path.home() / ".qwen" / "settings.json",
+        "key": "mcpServers",
+        "detect": lambda: (Path.home() / ".qwen").exists(),
+        "format": "object",
+        "needs_type": True,
+    },
 }
 
 

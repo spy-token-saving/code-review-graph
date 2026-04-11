@@ -203,7 +203,7 @@ def main() -> None:
         "--platform",
         choices=[
             "codex", "claude", "claude-code", "cursor", "windsurf", "zed",
-            "continue", "opencode", "antigravity", "all",
+            "continue", "opencode", "antigravity", "qwen", "all",
         ],
         default="all",
         help="Target platform for MCP config (default: all detected)",
@@ -233,7 +233,7 @@ def main() -> None:
         "--platform",
         choices=[
             "codex", "claude", "claude-code", "cursor", "windsurf", "zed",
-            "continue", "opencode", "antigravity", "all",
+            "continue", "opencode", "antigravity", "qwen", "all",
         ],
         default="all",
         help="Target platform for MCP config (default: all detected)",

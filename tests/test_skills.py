@@ -423,6 +423,49 @@ class TestInstallPlatformConfigs:
         assert entry["type"] == "stdio"
         assert entry["env"] == []
 
+    def test_install_qwen_config(self, tmp_path):
+        """Qwen Code uses ~/.qwen/settings.json with mcpServers (see #83)."""
+        qwen_config = tmp_path / ".qwen" / "settings.json"
+        with patch.dict(
+            PLATFORMS,
+            {
+                "qwen": {
+                    **PLATFORMS["qwen"],
+                    "config_path": lambda root: qwen_config,
+                    "detect": lambda: True,
+                },
+            },
+        ):
+            configured = install_platform_configs(tmp_path, target="qwen")
+        assert "Qwen Code" in configured
+        data = json.loads(qwen_config.read_text())
+        entry = data["mcpServers"]["code-review-graph"]
+        assert entry["type"] == "stdio"
+        assert entry["args"][-1] == "serve"
+
+    def test_install_qwen_preserves_existing_servers(self, tmp_path):
+        """Adding qwen should merge with, not clobber, existing mcpServers."""
+        qwen_config = tmp_path / ".qwen" / "settings.json"
+        qwen_config.parent.mkdir(parents=True)
+        qwen_config.write_text(
+            json.dumps({"mcpServers": {"other-server": {"command": "other"}}}),
+            encoding="utf-8",
+        )
+        with patch.dict(
+            PLATFORMS,
+            {
+                "qwen": {
+                    **PLATFORMS["qwen"],
+                    "config_path": lambda root: qwen_config,
+                    "detect": lambda: True,
+                },
+            },
+        ):
+            install_platform_configs(tmp_path, target="qwen")
+        data = json.loads(qwen_config.read_text())
+        assert "other-server" in data["mcpServers"]
+        assert "code-review-graph" in data["mcpServers"]
+
     def test_install_all_detected(self, tmp_path):
         """Installing 'all' configures auto-detected platforms."""
         codex_config = tmp_path / ".codex" / "config.toml"
