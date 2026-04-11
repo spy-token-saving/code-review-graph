@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-04-11
+
+Ships the 11 bugs from PR #222 plus the `v2.2.3.1` smoke-test hotfixes, for users upgrading directly from `v2.2.3` or earlier.
+
+### Security
+- **fastmcp bumped from 1.0 → ≥2.14.0** (PR #222, fixes #139, #195): closes CVE-2025-62800 (XSS), CVE-2025-62801 (command injection via server_name), CVE-2025-66416 (Confused Deputy). Transitively drops the `docket → fakeredis` chain that was broken by a `FakeConnection` → `FakeRedisConnection` rename in recent fakeredis releases (#195). The FastMCP public API (`FastMCP(name, instructions=...)`, `@mcp.tool()`, `@mcp.prompt()`, `mcp.run(transport="stdio")`) is unchanged across the 1 → 2 bump, so no source changes were needed beyond the pin. All 24 tools verified to register on fastmcp 2.14.6 and round-trip real per-repo data via stdio MCP in a 6-repo smoke test.
+
+### Fixed
+- **Windows build/embed hangs** (PR #222, fixes #46, #136): `main()` now sets `WindowsSelectorEventLoopPolicy` before `mcp.run()` on `sys.platform == "win32"`. The default `ProactorEventLoop` on Windows Python 3.8+ deadlocks with `ProcessPoolExecutor` (used by `full_build`) over a stdio MCP transport — producing the silent "Synthesizing…" hangs on `build` and `embed_graph_tool`. This is a no-op on macOS/Linux. **Note**: the fix was applied blind; maintainer could not verify on Windows. Please open a fresh issue if you still see a hang on v2.2.4 Windows with either `sentence-transformers` or Gemini providers.
+- **Go method receivers** (PR #222, fixes #190): `func (s *T) Foo()` now attaches `Foo` to `T` as a member (`parent_name="T"`) with the usual `CONTAINS` edge instead of appearing as a top-level function. New `_get_go_receiver_type()` helper walks the method_declaration's first parameter_list to extract the receiver type name.
+- **Dart parser — three bugs** (PR #222, fixes #87):
+  - Dart `CALLS` edges (`_extract_dart_calls_from_children()`) — tree-sitter-dart doesn't wrap calls in a single `call_expression` node; the pattern is `identifier + selector > argument_part`. New walker handles both direct (`print('x')`) and method-chained (`obj.foo()`) shapes.
+  - Dart `package:` URI resolution in `_do_resolve_module()` — `package:<pkgname>/<sub_path>` now walks up to a `pubspec.yaml` whose `name:` declaration matches `<pkgname>` and resolves to `<root>/lib/<sub_path>`.
+  - `inheritors_of` bare-vs-qualified name mismatch in `tools/query.py` — falls back to `search_edges_by_target_name(node.name, kind=...)` for `INHERITS`/`IMPLEMENTS` when the qualified-name lookup returns nothing. Affects all languages (INHERITS targets are stored as bare strings for every language), not just Dart.
+- **Nested `node_modules` and framework ignore defaults** (PR #222, fixes #91): `_should_ignore()` now treats single-segment `<dir>/**` patterns as "this directory at any depth", so `node_modules/**` also matches `packages/app/node_modules/react/index.js` inside monorepos. Extended `DEFAULT_IGNORE_PATTERNS` with Laravel/Composer (`vendor/**`, `bootstrap/cache/**`, `public/build/**`), Ruby (`.bundle/**`), Gradle (`.gradle/**`, `*.jar`), Flutter/Dart (`.dart_tool/**`, `.pub-cache/**`), and generic `coverage/**`, `.cache/**`. Deliberately did **not** add `packages/**` or `bin/**`/`obj/**` — those are false positives in yarn/pnpm workspace monorepos and .NET source trees respectively.
+- **Bare `except Exception` cleanup** (PR #222, fixes #194): Replaced with specific exception classes + `logger.debug(...)` in 11 files (`cli.py`, `graph.py`, `migrations.py`, `parser.py`, `registry.py`, `tools/context.py`, `tsconfig_resolver.py`, `visualization.py`, `wiki.py`, `eval/benchmarks/search_quality.py`). No behavioral change; debuggability improvement.
+- **Visualization auto-collapse hiding all edges** (PR #222, fixes #132): `visualization.py` no longer unconditionally auto-collapses every File node on page load. Auto-collapse now only kicks in above 2000 nodes — previously any graph above ~300 nodes would silently hide every CALLS/IMPORTS/INHERITS edge because they connect Functions/Classes nested inside the collapsed Files.
+- **`eval` command crashes on `yaml.safe_load`** (PR #222, fixes #212): `eval.runner.load_all_configs()` now calls `_require_yaml()` before reading YAML, so users without `code-review-graph[eval]` installed get `ImportError: pyyaml is required: pip install code-review-graph[eval]` instead of `AttributeError: 'NoneType' object has no attribute 'safe_load'`.
+
+### VS Code extension (0.2.2)
+- **`better-sqlite3` bumped 11.x → 12.x** (PR #222, fixes #218): VS Code 1.115 ships Electron 39 / V8 14.2 which removed `v8::Context::GetIsolate()`, the C++ API used by `better-sqlite3@11`. The extension couldn't activate at all — every command was undefined. `better-sqlite3@12.4.1+` (installs 12.8.0) uses the new V8 API and ships Electron 39 prebuilds. `@types/better-sqlite3: ^7.6.8 → ^7.6.13`, plus type-import adjustments in `src/backend/sqlite.ts` for the `Node16` module resolution and the new CJS `export =` types. Extension version bumped to 0.2.2. **Remember to repackage and republish the `.vsix`** — the existing `publish.yml` workflow only covers PyPI.
+
+### Carried forward from 2.2.3.1
+- `serve --repo <X>` is now honored by all 24 MCP tools (was only read by `get_docs_section_tool`). See #223.
+- Wiki slug collisions no longer silently overwrite pages (~70% data loss on real repos). See #223.
+
+### Upgrade notes
+- `uvx --reinstall code-review-graph` or `pip install -U code-review-graph`, then re-run `code-review-graph install` (the 2.2.3 hook-schema rewrite is still a requirement if you're coming from 2.2.2 or earlier).
+- VS Code extension needs to be repackaged + republished separately; the Python release does not include it.
+
 ## [2.2.3.1] - 2026-04-11
 
 Hotfix on top of 2.2.3 for two bugs surfaced by a full first-time-user smoke test against six real OSS repos (express, fastapi, flask, gin, httpx, next.js).
