@@ -908,8 +908,50 @@ def pre_merge_check(base: str = "HEAD~1") -> list[dict]:
     return pre_merge_check_prompt(base=base)
 
 
+def _apply_tool_filter(tools: str | None = None) -> None:
+    """Remove tools not listed in the allow-list.
+
+    Accepts a comma-separated string of tool names to keep.  When set,
+    every registered MCP tool whose name is **not** in the list is
+    removed via ``FastMCP.remove_tool()``.
+
+    The allow-list can be supplied in two ways (first match wins):
+
+    1. ``tools`` argument (from ``serve --tools ...``).
+    2. ``CRG_TOOLS`` environment variable.
+
+    When neither is set, all tools remain available.
+
+    This is useful for token-constrained environments: CRG exposes 28+
+    tools by default (~8k description tokens per LLM turn).  Filtering
+    to a working set of 5-10 tools can reduce overhead by 70-85%.
+
+    Example::
+
+        # via CLI
+        code-review-graph serve --tools query_graph_tool,semantic_search_nodes_tool
+
+        # via env var
+        CRG_TOOLS=query_graph_tool,semantic_search_nodes_tool
+    """
+    import os
+
+    raw = tools or os.environ.get("CRG_TOOLS")
+    if not raw:
+        return
+    allowed = {t.strip() for t in raw.split(",") if t.strip()}
+    if not allowed:
+        return
+    registered = list(mcp._tool_manager._tools.keys())
+    for name in registered:
+        if name not in allowed:
+            mcp.remove_tool(name)
+
+
+
 def main(
     repo_root: str | None = None,
+    tools: str | None = None,
     *,
     transport: str = "stdio",
     host: str | None = None,
@@ -926,13 +968,17 @@ def main(
     See: #46, #136
 
     Args:
-        repo_root: Optional default repository root for tools.
+        repo_root: Default repository root for all tool calls.
+        tools: Comma-separated list of tool names to expose.
+            Falls back to ``CRG_TOOLS`` env var.  When unset, all
+            tools are available.
         transport: ``"stdio"`` (default) or ``"streamable-http"`` for local HTTP.
         host: Bind address when using HTTP (required for HTTP; set by CLI).
         port: Port when using HTTP (required for HTTP; set by CLI).
     """
     global _default_repo_root
     _default_repo_root = repo_root
+    _apply_tool_filter(tools)
     if sys.platform == "win32":
         import asyncio
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

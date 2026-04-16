@@ -504,6 +504,15 @@ def main() -> None:
     )
     serve_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
     serve_cmd.add_argument(
+        "--tools", default=None,
+        help=(
+            "Comma-separated list of tool names to expose "
+            "(e.g. query_graph_tool,semantic_search_nodes_tool). "
+            "Unlisted tools are removed. Falls back to CRG_TOOLS env var. "
+            "When unset, all tools are available."
+        ),
+    )
+    serve_cmd.add_argument(
         "--http",
         action="store_true",
         help="Listen for MCP over Streamable HTTP on localhost (default port 5555)",
@@ -547,9 +556,10 @@ def main() -> None:
                 transport="streamable-http",
                 host=host,
                 port=port,
+                tools=args.tools,
             )
         else:
-            serve_main(repo_root=args.repo)
+            serve_main(repo_root=args.repo, tools=args.tools)
         return
 
     if args.command == "eval":
