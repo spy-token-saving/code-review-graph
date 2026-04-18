@@ -67,7 +67,6 @@ Build the code review graph for this project
 
 The initial build takes ~10 seconds for a 500-file project. After that, the graph updates automatically on every file edit and git commit.
 
----
 
 ## How It Works
 
@@ -196,7 +195,7 @@ The blast-radius analysis never misses an actually impacted file (perfect recall
 | **23 languages + notebooks** | Python, TypeScript/TSX, JavaScript, Vue, Svelte, Go, Rust, Java, Scala, C#, Ruby, Kotlin, Swift, PHP, Solidity, C/C++, Dart, R, Perl, Lua, Zig, PowerShell, Julia, Jupyter/Databricks (.ipynb) |
 | **Blast-radius analysis** | Shows exactly which functions, classes, and files are affected by any change |
 | **Auto-update hooks** | Graph updates on every file edit and git commit without manual intervention |
-| **Semantic search** | Optional vector embeddings via sentence-transformers, Google Gemini, or MiniMax |
+| **Semantic search** | Optional vector embeddings via sentence-transformers, Google Gemini, MiniMax, or any OpenAI-compatible endpoint (real OpenAI, Azure, new-api, LiteLLM, vLLM, LocalAI) |
 | **Interactive visualisation** | D3.js force-directed graph with search, community legend toggles, and degree-scaled nodes |
 | **Hub & bridge detection** | Find most-connected nodes and architectural chokepoints via betweenness centrality |
 | **Surprise scoring** | Detect unexpected coupling: cross-community, cross-language, peripheral-to-hub edges |
@@ -361,9 +360,76 @@ all tools are available. This is especially useful for MCP client configurations
 }
 ```
 
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CRG_GIT_TIMEOUT` | Timeout in seconds for Git operations | `30` |
+| `CRG_EMBEDDING_MODEL` | Default model for vector embeddings | `all-MiniLM-L6-v2` |
+| `CRG_MAX_IMPACT_NODES` | Maximum nodes to include in impact analysis | `500` |
+| `CRG_MAX_IMPACT_DEPTH` | Search depth for blast-radius analysis | `2` |
+| `CRG_MAX_BFS_DEPTH` | Maximum depth for graph traversal | `15` |
+| `GOOGLE_API_KEY` | API key for Google Gemini embeddings | - |
+| `MINIMAX_API_KEY` | API key for MiniMax embeddings | - |
+| `CRG_OPENAI_BASE_URL` | OpenAI-compatible embeddings endpoint | - |
+| `CRG_OPENAI_API_KEY` | API key for OpenAI-compatible embeddings | - |
+| `CRG_OPENAI_MODEL` | Model name for OpenAI-compatible embeddings | - |
+| `CRG_OPENAI_DIMENSION` | Pin embedding dimension (v3 models support reduction) | - |
+| `CRG_TOOLS` | Comma-separated list of MCP tools to expose (all if unset) | - |
+| `NO_COLOR` | If set, disables ANSI colors in terminal | - |
+| `CRG_SERIAL_PARSE` | If `1`, disables parallel parsing (use for debugging) | - |
+
+OpenAI-compatible embeddings (real OpenAI, Azure, or any self-hosted gateway like
+new-api / LiteLLM / vLLM / LocalAI / Ollama in openai mode) need no extra install —
+just set the environment variables and pass `provider="openai"` to `embed_graph`:
+
+```bash
+export CRG_OPENAI_BASE_URL=http://127.0.0.1:3000/v1     # or https://api.openai.com/v1
+export CRG_OPENAI_API_KEY=sk-...
+export CRG_OPENAI_MODEL=text-embedding-3-small          # whatever your gateway serves
+# optional:
+export CRG_OPENAI_DIMENSION=1536                        # pin dim (v3 models support reduction)
+export CRG_OPENAI_BATCH_SIZE=100                        # lower for gateways with tight limits
+                                                        # (e.g. Qwen text-embedding-v4 caps at 10)
+```
+
+The cloud-egress warning is auto-skipped when the base URL points to localhost
+(`127.0.0.1`, `localhost`, `0.0.0.0`, `::1`).
+
+> **Model selection tip.** Avoid `-preview` / `-beta` / `-exp` model IDs
+> (e.g. `google/gemini-embedding-2-preview`) for anything you plan to keep
+> long-term — preview models can change weights (different dimension → full
+> re-embed required) or be deprecated without notice. Prefer stable GA
+> releases such as `text-embedding-3-small` / `text-embedding-3-large` (OpenAI),
+> `Qwen/Qwen3-Embedding-8B` (via self-hosted vLLM / LocalAI), or
+> `gemini-embedding-001` (via the native Gemini provider, which requires
+> `GOOGLE_API_KEY` instead of the OpenAI-compatible path).
+>
+> Also note: `code-review-graph` currently embeds **function signatures only**
+> (~10 tokens per node, e.g. `"parse_file function (path: str) returns Tree"`).
+> Models whose headline quality comes from long-context body understanding
+> (such as Gemini 2 or Qwen3-8B at their MTEB-code SOTA scores) will see a
+> much narrower quality gap against smaller models at this input length.
+> Body/docstring embedding is tracked as a follow-up enhancement.
+
 </details>
 
 ---
+
+## Troubleshooting
+
+### Windows Configuration Issues (Invalid JSON / Connection Closed)
+If you are using Windows and encounter `Invalid JSON: EOF while parsing` or `MCP error -32000: Connection closed` when connecting via Claude Code, do not use the `cmd /c` wrapper in your config.
+
+Ensure `fastmcp` is updated to at least `3.2.4+`. Then, configure your `~/.claude.json` to execute the `.exe` directly and pass the UTF-8 environment variable via the config:
+
+```json
+"code-review-graph": {
+  "command": "C:\\path\\to\\your\\venv\\Scripts\\code-review-graph.exe",
+  "args": ["serve", "--repo", "C:\\path\\to\\your\\project"],
+  "env": { "PYTHONUTF8": "1" }
+}
+```
 
 ## Contributing
 
